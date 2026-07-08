@@ -274,6 +274,32 @@ const TEMPLATE_B64 = "UEsDBBQABgAIAAAAIQBNm2NW4wEAAPEPAAATAAgCW0NvbnRlbnRfVHlwZX
 
 
 // ---------- Preset persistence ----------
+// window.storage only exists inside the Claude.ai artifact preview. When this file is deployed
+// standalone (Netlify, Vercel, opened directly, etc.) it's undefined, so we fall back to
+// localStorage transparently — same API, works in both environments.
+const Storage = {
+  async get(key){
+    if(window.storage){
+      try{ return await window.storage.get(key); }catch(e){ /* fall through */ }
+    }
+    const v = localStorage.getItem('cello-tool:'+key);
+    return v !== null ? {key, value:v} : null;
+  },
+  async set(key, value){
+    if(window.storage){
+      try{ return await window.storage.set(key, value); }catch(e){ /* fall through */ }
+    }
+    localStorage.setItem('cello-tool:'+key, value);
+    return {key, value};
+  },
+  async delete(key){
+    if(window.storage){
+      try{ return await window.storage.delete(key); }catch(e){ /* fall through */ }
+    }
+    localStorage.removeItem('cello-tool:'+key);
+    return {key, deleted:true};
+  }
+};
 const FIELD_IDS = ["country","serviceClass","businessIndicator","inboundOutbound","commercialYN","incoTerms",
 "importExportDeclaration","exportCommodityClassification","weightUnit","lengthUnit","currencyCode","ftaApplication",
 "collectingSiteUsage","senderName","defaultEmail","goodsDescription","pickupOffset","hsCode","originCountry",
@@ -290,12 +316,12 @@ function applySettings(s){
 
 async function listPresetNames(){
   try{
-    const r = await window.storage.get('preset-names');
+    const r = await Storage.get('preset-names');
     return r ? JSON.parse(r.value) : [];
   }catch(e){ return []; }
 }
 async function saveNames(names){
-  await window.storage.set('preset-names', JSON.stringify(names));
+  await Storage.set('preset-names', JSON.stringify(names));
 }
 async function refreshPresetDropdown(selectName){
   const names = await listPresetNames();
@@ -307,7 +333,7 @@ document.getElementById('btnSavePreset').onclick = async ()=>{
   const name = document.getElementById('presetName').value.trim() || '기본';
   const settings = getSettings();
   try{
-    await window.storage.set('preset:'+name, JSON.stringify(settings));
+    await Storage.set('preset:'+name, JSON.stringify(settings));
     let names = await listPresetNames();
     if(!names.includes(name)){ names.push(name); await saveNames(names); }
     await refreshPresetDropdown(name);
@@ -318,7 +344,7 @@ document.getElementById('btnLoadPreset').onclick = async ()=>{
   const name = document.getElementById('presetSelect').value;
   if(!name) return;
   try{
-    const r = await window.storage.get('preset:'+name);
+    const r = await Storage.get('preset:'+name);
     if(r){ applySettings(JSON.parse(r.value)); document.getElementById('presetName').value = name; document.getElementById('presetStatus').textContent = `"${name}" 불러옴`; }
   }catch(e){ document.getElementById('presetStatus').textContent = '불러오기 실패'; }
 };
@@ -326,7 +352,7 @@ document.getElementById('btnDeletePreset').onclick = async ()=>{
   const name = document.getElementById('presetSelect').value;
   if(!name) return;
   try{
-    await window.storage.delete('preset:'+name);
+    await Storage.delete('preset:'+name);
     let names = await listPresetNames();
     names = names.filter(n=>n!==name);
     await saveNames(names);
